@@ -3,9 +3,14 @@
 inotify_lite is a Python 3.8 wrapper around inotify (see [inotify(7)](https://man7.org/linux/man-pages/man7/inotify.7.html)).
 
 ## Usage
+
+`pip install inotify_lite`
+
 ### Classes
 #### IN_FLAGS
-`class IN_FLAGS(enum.IntFlag)`
+```python
+class IN_FLAGS(enum.IntFlag)
+```
 
 Wrapper around the underlying C lib flags. See [inotify_add_watch(2)](https://man7.org/linux/man-pages/man2/inotify_add_watch.2.html), `<sys/inotify.h>`, `<bits/inotify.h>`.
 
