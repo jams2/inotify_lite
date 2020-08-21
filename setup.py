@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
     setuptools.setup(
         name="inotify_lite",
-        version="0.0.1",
+        version="0.0.2",
         author="Joshua Munn",
         author_email="public@elysee-munn.family",
         description="Linux inotify wrapper",
@@ -19,5 +19,5 @@ with open("README.md", "r") as fh:
             "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
             "Operating System :: POSIX :: Linux",
         ],
-        python_requires=">=3.6",
+        python_requires=">=3.8",
     )

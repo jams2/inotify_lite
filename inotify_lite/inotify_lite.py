@@ -163,10 +163,10 @@ class TreeWatcher(Inotify):
         callback: Callable[[Sequence[Event]], Any],
         *dirs: str,
         blocking: bool = True,
-        all_events: bool = True,
+        watch_all: bool = True,
         flags: IN_FLAGS = 0,
     ):
-        if all_events:
+        if watch_all:
             super().__init__(
                 callback,
                 *dirs,
@@ -185,10 +185,10 @@ class FileWatcher(Inotify):
         callback: Callable[[Sequence[Event]], Any],
         *files: str,
         blocking: bool = True,
-        all_events: bool = True,
+        watch_all: bool = True,
         flags: IN_FLAGS = 0,
     ):
-        if all_events:
+        if watch_all:
             super().__init__(
                 callback, *files, blocking=blocking, flags=flags | IN_FLAGS.ALL_EVENTS,
             )
