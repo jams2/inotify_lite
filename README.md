@@ -43,12 +43,11 @@ TreeWatcher(
         callback: Callable[[Sequence[Event]], Any],
         *dirs: str,
         blocking: bool = True,
-        watch_all: bool = True,
         flags: IN_FLAGS = 0,
 )
 ```
 
-Watch directories. Extends `Inotify` and passes `IN_FLAGS.ONLYDIR` by default (raises if any of `dirs` is not a directory). The `watch_all` option means to watch for all filesystem events (this can be quite noisy).
+Watch directories. Extends `Inotify` and passes `IN_FLAGS.ONLYDIR` by default (raises if any of `dirs` is not a directory).
 
 -----
 
@@ -59,7 +58,6 @@ FileWatcher(
         callback: Callable[[Sequence[Event]], Any],
         *files: str,
         blocking: bool = True,
-        watch_all: bool = True,
         flags: IN_FLAGS = 0,
 )
 ```
@@ -79,6 +77,6 @@ def my_callback(events):
     	print(IN_FLAGS(e.mask))
 
 # Watch the home directory for successful writes.
-watcher = TreeWatcher(my_callback, "~", watch_all=False, flags=IN_FLAGS.CLOSE_WRITE)
+watcher = TreeWatcher(my_callback, "~", flags=IN_FLAGS.CLOSE_WRITE)
 watcher.watch()
 ```

@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
     setuptools.setup(
         name="inotify_lite",
-        version="0.0.2",
+        version="0.0.3",
         author="Joshua Munn",
         author_email="public@elysee-munn.family",
         description="Linux inotify wrapper",
