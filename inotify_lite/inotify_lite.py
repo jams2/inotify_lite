@@ -5,6 +5,7 @@ Requires Python >= 3.8
 import os
 import enum
 import sys
+from string import Template
 from typing import Callable, Sequence, Any
 from ctypes import *
 from struct import unpack, calcsize
@@ -84,6 +85,7 @@ class Inotify:
     LEN_OFFSET = sizeof(c_int) + sizeof(c_uint32) * 2
     EVENT_SIZE = sizeof(c_int) + (sizeof(c_uint32) * 2) + sizeof(c_char_p)
     MAX_READ = 4096
+    EVENT_STRUCT_FMT = Template("iIII${name_len}s")
 
     def __init__(
         self,
@@ -102,7 +104,7 @@ class Inotify:
         self._add_watches()
 
     def _add_watches(self):
-        for fname in self.files:
+        for fname in map(lambda x: os.path.expanduser(x), self.files):
             if not os.path.exists(fname):
                 raise FileNotFoundError(fname)
             as_bytes = fname.encode("utf-8")
@@ -127,7 +129,7 @@ class Inotify:
             offset = 0
             while offset < n:
                 name_len = c_uint32.from_buffer(buf, offset + self.LEN_OFFSET)
-                fmt = f"iIII{name_len.value}s"
+                fmt = self.EVENT_STRUCT_FMT.substitute(name_len=name_len.value)
                 obj_size = calcsize(fmt)
                 events.append(Event(*(unpack(fmt, buf[offset : offset + obj_size]))))
                 offset += obj_size
