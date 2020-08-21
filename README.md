@@ -13,7 +13,9 @@ Wrapper around the underlying C lib flags. See `inotify_add_watch(2)`, `<sys/ino
 
 #### Event
 
-`namedtuple("Event", ("wd", "mask", "cookie", "len", "name"))`
+```python
+namedtuple("Event", ("wd", "mask", "cookie", "len", "name"))
+```
 
 Maps the underlying `struct inotify_event`. See inotify_add_watch(2).
 
@@ -46,7 +48,7 @@ TreeWatcher(
 )
 ```
 
-Extends `Inotify` and passes IN_FLAGS.ONLYDIR by default (raises if any of `dirs` is not a directory). The `all_events` option means to watch for all filesystem events (this can be quite noisy).
+Watch directories. Extends `Inotify` and passes `IN_FLAGS.ONLYDIR` by default (raises if any of `dirs` is not a directory). The `all_events` option means to watch for all filesystem events (this can be quite noisy).
 
 -----
 
@@ -61,6 +63,8 @@ FileWatcher(
         flags: IN_FLAGS = 0,
 )
 ```
+
+Watch files.
 
 -----
 
