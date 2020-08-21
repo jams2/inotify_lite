@@ -1,13 +1,15 @@
 # inotify_lite
 
-inotify_lite is a Python 3.8 wrapper around inotify (see inotify(7)).
+inotify_lite is a Python 3.8 wrapper around inotify (see `inotify(7)`).
 
 ## Usage
 ### Classes
 #### IN_FLAGS
 `class IN_FLAGS(enum.IntFlag)`
 
-Wrapper around the underlying C lib flags. See inotify_add_watch(2), <sys/inotify.h>, <bits/inotify.h>.
+Wrapper around the underlying C lib flags. See `inotify_add_watch(2)`, `<sys/inotify.h>`, `<bits/inotify.h>`.
+
+-----
 
 #### Event
 
@@ -15,6 +17,7 @@ Wrapper around the underlying C lib flags. See inotify_add_watch(2), <sys/inotif
 
 Maps the underlying `struct inotify_event`. See inotify_add_watch(2).
 
+-----
 
 #### Inotify
 
@@ -28,6 +31,8 @@ Inotify(
 ```
 
 Base class for `TreeWatcher` and `FileWatcher`.
+
+-----
 
 #### TreeWatcher
 
@@ -43,6 +48,8 @@ TreeWatcher(
 
 Extends `Inotify` and passes IN_FLAGS.ONLYDIR by default (raises if any of `dirs` is not a directory). The `all_events` option means to watch for all filesystem events (this can be quite noisy).
 
+-----
+
 #### FileWatcher
 
 ```python
@@ -55,6 +62,7 @@ FileWatcher(
 )
 ```
 
+-----
 
 ### Examples
 
@@ -66,6 +74,7 @@ def my_callback(events):
     for e in events:
     	print(IN_FLAGS(e.mask))
 
-# Watch the home directory for successful file writes.
+# Watch the home directory for successful writes.
 watcher = TreeWatcher(my_callback, "~", all_events=False, flags=IN_FLAGS.CLOSE_WRITE)
+watcher.watch()
 ```
