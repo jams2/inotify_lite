@@ -18,30 +18,31 @@ from ctypes import (
     get_errno,
     create_string_buffer,
 )
-from string import Template
 from typing import Callable, Any, Dict, Set, List
 from struct import unpack, calcsize
 from collections import namedtuple
 
 
-libc = CDLL("libc.so.6")
+def inotify_setup():
+    libc = CDLL("libc.so.6")
 
-prototype = CFUNCTYPE(c_int, use_errno=True)
-inotify_init = prototype(("inotify_init", libc))
+    prototype = CFUNCTYPE(c_int, c_int, use_errno=True)
+    init1 = prototype(("inotify_init1", libc), ((1, "flags", 0),))
 
-prototype = CFUNCTYPE(c_int, c_int, use_errno=True)
-inotify_init1 = prototype(("inotify_init1", libc), ((1, "flags", 0),))
+    prototype = CFUNCTYPE(c_int, c_int, c_char_p, c_uint32, use_errno=True)
+    add_watch = prototype(
+        ("inotify_add_watch", libc), ((1, "fd"), (1, "pathname"), (1, "mask")),
+    )
 
-prototype = CFUNCTYPE(c_int, c_int, c_char_p, c_uint32, use_errno=True)
-inotify_add_watch = prototype(
-    ("inotify_add_watch", libc), ((1, "fd"), (1, "pathname"), (1, "mask")),
-)
+    prototype = CFUNCTYPE(c_int, c_int, c_int, use_errno=True)
+    rm_watch = prototype(("inotify_rm_watch", libc), ((1, "fd"), (1, "wd")))
 
-prototype = CFUNCTYPE(c_int, c_int, c_int, use_errno=True)
-inotify_rm_watch = prototype(("inotify_rm_watch", libc), ((1, "fd"), (1, "wd")))
+    prototype = CFUNCTYPE(c_ssize_t, c_int, c_void_p, c_size_t, use_errno=True)
+    c_read = prototype(("read", libc), ((1, "fd"), (1, "buf"), (1, "count")))
+    return init1, add_watch, rm_watch, c_read
 
-prototype = CFUNCTYPE(c_ssize_t, c_int, c_void_p, c_size_t, use_errno=True)
-read = prototype(("read", libc), ((1, "fd"), (1, "buf"), (1, "count")))
+
+(inotify_init1, inotify_add_watch, inotify_rm_watch, read) = inotify_setup()
 
 
 class INFlags(enum.IntFlag):
@@ -58,11 +59,9 @@ class INFlags(enum.IntFlag):
     ATTRIB = 0x00000004  #  Metadata changed.
     CLOSE_WRITE = 0x00000008  #  Writable file was closed.
     CLOSE_NOWRITE = 0x00000010  #  Unwritable file closed.
-    CLOSE = CLOSE_WRITE | CLOSE_NOWRITE  #  Close.
     OPEN = 0x00000020  #  File was opened.
     MOVED_FROM = 0x00000040  #  File was moved from X.
     MOVED_TO = 0x00000080  #  File was moved to Y.
-    MOVE = MOVED_FROM | MOVED_TO  #  Moves.
     CREATE = 0x00000100  #  Subfile was created.
     DELETE = 0x00000200  #  Subfile was deleted.
     DELETE_SELF = 0x00000400  #  Self was deleted.
@@ -111,7 +110,6 @@ class Inotify:
     LEN_OFFSET = sizeof(c_int) + sizeof(c_uint32) * 2
     EVENT_SIZE = sizeof(c_int) + (sizeof(c_uint32) * 2) + sizeof(c_char_p)
     MAX_READ = 4096
-    EVENT_STRUCT_FMT = Template("iIII${name_len}s")
 
     def __init__(
         self,
@@ -128,11 +126,13 @@ class Inotify:
         self.callback = callback
         self.watch_flags = watch_flags
         self.watch_fds: Dict[int, str] = {}
-        self.files: Set[str] = set(files)
-        for fname in self.files:
-            self._add_watch(fname, INFlags.MASK_CREATE)
+        self.move_to: Dict[int, str] = {}
+        self.move_from: Dict[int, str] = {}
+        self.files: Set[str] = set()
+        for fname in files:
+            self._add_watch(os.path.abspath(fname))
 
-    def _add_watch(self, fname: str, add_flags: INFlags = INFlags.NO_FLAGS) -> None:
+    def _add_watch(self, fname: str, add_flags: INFlags = INFlags.MASK_CREATE) -> None:
         if not os.path.exists(fname):
             raise FileNotFoundError(fname)
         watch_fd = inotify_add_watch(
@@ -143,7 +143,16 @@ class Inotify:
         if watch_fd < 0:
             err = os.strerror(get_errno())
             raise OSError(err)
+        self.files.add(fname)
         self.watch_fds[watch_fd] = fname
+
+    def _rm_watch(self, fd: int) -> None:
+        if inotify_rm_watch(c_int(self.inotify_fd), c_int(fd)) < 0:
+            print(
+                f"Inotify: got error removing watch fd {fd} ({self.watch_fds[fd]}):",
+                file=sys.stderr,
+            )
+            print(os.strerror(get_errno()), file=sys.stderr)
 
     @staticmethod
     def str_from_bytes(byte_obj: bytes) -> str:
@@ -154,13 +163,17 @@ class Inotify:
     def _handle_event(self, event: Event) -> None:
         self.callback(event)
 
+    @staticmethod
+    def get_event_struct_format(name_len: int) -> str:
+        return f"iIII{name_len}s"
+
     def _watch(self):
         buf = create_string_buffer(self.MAX_READ)
         while (bytes_read := read(self.inotify_fd, buf, self.MAX_READ)) > 0:
             offset = 0
             while offset < bytes_read:
                 name_len = c_uint32.from_buffer(buf, offset + self.LEN_OFFSET)
-                fmt = self.EVENT_STRUCT_FMT.substitute(name_len=name_len.value)
+                fmt = self.get_event_struct_format(name_len.value)
                 obj_size = calcsize(fmt)
                 self._handle_event(
                     Event(*(unpack(fmt, buf[offset : offset + obj_size])))
@@ -168,23 +181,18 @@ class Inotify:
                 offset += obj_size
 
     def _teardown(self):
-        for fd, filename in self.watch_fds.items():
-            if inotify_rm_watch(self.inotify_fd, fd) < 0:
-                print(
-                    f"Inotify: got error removing watch fd {fd} ({filename}):",
-                    file=sys.stderr,
-                )
-                print(f">>> {os.strerror(get_errno())}", file=sys.stderr)
+        for fd in self.watch_fds:
+            self._rm_watch(fd)
         os.close(self.inotify_fd)
+        self.inotify_fd = -1
+        self.files = set()
+        self.watch_fds = {}
 
     def watch(self):
         try:
             self._watch()
         except KeyboardInterrupt:
             pass
-        except Exception as err:
-            print("Inotify got unexpected exception:", file=sys.stderr)
-            print(err, file=sys.stderr)
         finally:
             self._teardown()
 
@@ -214,8 +222,15 @@ class TreeWatcher(Inotify):
             return []
         subdirs = []
         for dirname in dirs:
-            subdirs += [x for x in os.listdir(dirname) if os.path.isdir(x)]
+            subdirs += [
+                os.path.join(dirname, x)
+                for x in os.listdir(dirname)
+                if os.path.isdir(x)
+            ]
         return dirs + self._walk_subdirs(subdirs)
+
+    def get_event_abs_path(self, event: Event) -> str:
+        return f"{self.watch_fds[event.wd]}/{self.str_from_bytes(event.name)}"
 
     def _handle_event(self, event: Event) -> None:
         """ As we may be watching for changes in all subdirectories,
@@ -224,16 +239,20 @@ class TreeWatcher(Inotify):
         """
         if event.mask & INFlags.ISDIR:
             if event.mask & INFlags.CREATE:
-                print("New subdirectory: ", end="")
-                print(self.watch_fds[event.wd] + "/" + self.str_from_bytes(event.name))
+                new_dir_name = self.get_event_abs_path(event)
+                self._add_watch(new_dir_name)
+                print("Added watch: {0}".format(new_dir_name))
             elif event.mask & INFlags.DELETE:
-                print("Subdirectory deleted: ", end="")
-                print(self.watch_fds[event.wd] + "/" + self.str_from_bytes(event.name))
-            elif event.mask & (INFlags.MOVED_FROM | INFlags.MOVED_TO):
+                self._rm_watch(event.wd)
+                self.files.remove(self.get_event_abs_path(event))
+                del self.watch_fds[event.wd]
+                print("Removed watch: {0}".format(self.str_from_bytes(event.name)))
+            elif event.mask & INFlags.MOVE:
                 print("Subdirectory moved: ", end="")
                 print(self.watch_fds[event.wd] + "/" + self.str_from_bytes(event.name))
         if event.mask & INFlags.DELETE_SELF:
             # A watched directory was deleted.
+            # Delete the watch and all its watched subdirectories
             pass
         if event.mask & INFlags.MOVE_SELF:
             # A watched directory was moved.
