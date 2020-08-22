@@ -7,9 +7,9 @@ inotify_lite is a Python 3.8 wrapper around inotify (see [inotify(7)](https://ma
 `pip install inotify_lite`
 
 ### Classes
-#### IN_FLAGS
+#### INFlags
 ```python
-class IN_FLAGS(enum.IntFlag)
+class INFlags(enum.IntFlag)
 ```
 
 Wrapper around the underlying C lib flags. See [inotify_add_watch(2)](https://man7.org/linux/man-pages/man2/inotify_add_watch.2.html), `<sys/inotify.h>`, `<bits/inotify.h>`.
@@ -33,7 +33,7 @@ Inotify(
 	callback: Callable[[Sequence[Event]], Any],
 	*files: str,
 	blocking: bool = True,
-	flags: IN_FLAGS = 0,
+	flags: INFlags = 0,
 )
 ```
 
@@ -48,11 +48,11 @@ TreeWatcher(
         callback: Callable[[Sequence[Event]], Any],
         *dirs: str,
         blocking: bool = True,
-        flags: IN_FLAGS = 0,
+        flags: INFlags = 0,
 )
 ```
 
-Watch directories. Extends `Inotify` and passes `IN_FLAGS.ONLYDIR` by default (raises if any of `dirs` is not a directory).
+Watch directories. Extends `Inotify` and passes `INFlags.ONLYDIR` by default (raises if any of `dirs` is not a directory).
 
 -----
 
@@ -63,7 +63,7 @@ FileWatcher(
         callback: Callable[[Sequence[Event]], Any],
         *files: str,
         blocking: bool = True,
-        flags: IN_FLAGS = 0,
+        flags: INFlags = 0,
 )
 ```
 
@@ -79,9 +79,9 @@ To watch a directory:
 def my_callback(events):
     # Just show me the event mask.
     for e in events:
-    	print(IN_FLAGS(e.mask))
+    	print(INFlags(e.mask))
 
 # Watch the home directory for successful writes.
-watcher = TreeWatcher(my_callback, "~", flags=IN_FLAGS.CLOSE_WRITE)
+watcher = TreeWatcher(my_callback, "~", flags=INFlags.CLOSE_WRITE)
 watcher.watch()
 ```
