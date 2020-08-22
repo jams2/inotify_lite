@@ -5,9 +5,21 @@ Requires Python >= 3.8
 import os
 import enum
 import sys
+from ctypes import (
+    CDLL,
+    CFUNCTYPE,
+    c_int,
+    c_char_p,
+    c_uint32,
+    c_ssize_t,
+    c_void_p,
+    c_size_t,
+    sizeof,
+    get_errno,
+    create_string_buffer,
+)
 from string import Template
-from typing import Callable, Sequence, Any
-from ctypes import *
+from typing import Callable, Any, Dict
 from struct import unpack, calcsize
 from collections import namedtuple
 
@@ -32,10 +44,11 @@ prototype = CFUNCTYPE(c_ssize_t, c_int, c_void_p, c_size_t, use_errno=True)
 read = prototype(("read", libc), ((1, "fd"), (1, "buf"), (1, "count")))
 
 
-class IN_FLAGS(enum.IntFlag):
+class INFlags(enum.IntFlag):
     """ See inotify_add_watch(2), <sys/inotify.h>, <bits/inotify.h>.
     """
 
+    NOFLAGS = 0x0
     NONBLOCK = 0x800
     CLOEXEC = 0x80000
     ACCESS = 0x00000001
@@ -89,22 +102,22 @@ class Inotify:
 
     def __init__(
         self,
-        callback: Callable[[Sequence[Event]], Any],
+        callback: Callable[[Event], Any],
         *files: str,
         blocking: bool = True,
-        flags: IN_FLAGS = 0,
+        flags: INFlags = INFlags.NOFLAGS,
     ):
         self.inotify_fd = self._blocking() if blocking else self._non_blocking()
         if self.inotify_fd < 0:
             raise OSError(os.strerror(get_errno()))
         self.callback = callback
         self.flags = flags
-        self.watch_fds = {}
+        self.watch_fds: Dict[int, str] = {}
         self.files = files
         self._add_watches()
 
     def _add_watches(self):
-        for fname in map(lambda x: os.path.expanduser(x), self.files):
+        for fname in map(os.path.expanduser, self.files):
             if not os.path.exists(fname):
                 raise FileNotFoundError(fname)
             as_bytes = fname.encode("utf-8")
@@ -116,24 +129,29 @@ class Inotify:
                 raise OSError(err)
             self.watch_fds[watch_fd] = fname
 
-    def _blocking(self):
+    @staticmethod
+    def _blocking():
         return inotify_init()
 
-    def _non_blocking(self):
-        return inotify_init1(self.NONBLOCK)
+    @staticmethod
+    def _non_blocking():
+        return inotify_init1(INFlags.NONBLOCK)
+
+    def _handle_event(self, event: Event) -> None:
+        self.callback(event)
 
     def _watch(self):
         buf = create_string_buffer(self.MAX_READ)
-        while (n := read(self.inotify_fd, buf, self.MAX_READ)) > 0:
-            events = []
+        while (bytes_read := read(self.inotify_fd, buf, self.MAX_READ)) > 0:
             offset = 0
-            while offset < n:
+            while offset < bytes_read:
                 name_len = c_uint32.from_buffer(buf, offset + self.LEN_OFFSET)
                 fmt = self.EVENT_STRUCT_FMT.substitute(name_len=name_len.value)
                 obj_size = calcsize(fmt)
-                events.append(Event(*(unpack(fmt, buf[offset : offset + obj_size]))))
+                self._handle_event(
+                    Event(*(unpack(fmt, buf[offset : offset + obj_size])))
+                )
                 offset += obj_size
-            self.callback(events)
 
     def _teardown(self):
         for fd, filename in self.watch_fds.items():
@@ -160,22 +178,15 @@ class Inotify:
 class TreeWatcher(Inotify):
     def __init__(
         self,
-        callback: Callable[[Sequence[Event]], Any],
+        callback: Callable[[Event], Any],
         *dirs: str,
         blocking: bool = True,
-        flags: IN_FLAGS = IN_FLAGS.ALL_EVENTS,
+        flags: INFlags = INFlags.ALL_EVENTS,
     ):
         super().__init__(
-            callback, *dirs, blocking=blocking, flags=flags | IN_FLAGS.ONLYDIR
+            callback, *dirs, blocking=blocking, flags=flags | INFlags.ONLYDIR
         )
 
 
 class FileWatcher(Inotify):
-    def __init__(
-        self,
-        callback: Callable[[Sequence[Event]], Any],
-        *files: str,
-        blocking: bool = True,
-        flags: IN_FLAGS = IN_FLAGS.ALL_EVENTS,
-    ):
-        super().__init__(callback, *files, blocking=blocking, flags=flags)
+    pass
