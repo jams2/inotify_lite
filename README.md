@@ -1,87 +1,224 @@
-# inotify_lite
+Module inotify_lite
+===================
+inotify_lite: a wrapper around Linux's inotify functionality.
 
-inotify_lite is a Python 3.8 wrapper around inotify (see [inotify(7)](https://man7.org/linux/man-pages/man7/inotify.7.html)).
+Exposes functionality for watching files or directories, and performing
+actions on reported events. See also: Kovid Goyal's 2013 calibre implementation.
 
-## Usage
+    Typical usage:
 
-`pip install inotify_lite`
+    watcher = TreeWatcher(lamdba x: print(x), ".")
+    watcher.watch()
 
-### Classes
-#### INFlags
-```python
-class INFlags(enum.IntFlag)
-```
+Functions
+---------
 
-Wrapper around the underlying C lib flags. See [inotify_add_watch(2)](https://man7.org/linux/man-pages/man2/inotify_add_watch.2.html), `<sys/inotify.h>`, `<bits/inotify.h>`.
+    
+`inotify_setup()`
+:   
 
------
+Classes
+-------
 
-#### Event
+`Event(wd, mask, cookie, len, name)`
+:   Event(wd, mask, cookie, len, name)
 
-```python
-namedtuple("Event", ("wd", "mask", "cookie", "len", "name"))
-```
+    ### Ancestors (in MRO)
 
-Maps the underlying `struct inotify_event`. See [inotify_add_watch(2)](https://man7.org/linux/man-pages/man2/inotify_add_watch.2.html).
+    * builtins.tuple
 
------
+    ### Instance variables
 
-#### Inotify
+    `cookie`
+    :   Alias for field number 2
 
-```python
-Inotify(
-	callback: Callable[[Sequence[Event]], Any],
-	*files: str,
-	blocking: bool = True,
-	flags: INFlags = 0,
-)
-```
+    `len`
+    :   Alias for field number 3
 
-Base class for `TreeWatcher` and `FileWatcher`.
+    `mask`
+    :   Alias for field number 1
 
------
+    `name`
+    :   Alias for field number 4
 
-#### TreeWatcher
+    `wd`
+    :   Alias for field number 0
 
-```python
-TreeWatcher(
-        callback: Callable[[Sequence[Event]], Any],
-        *dirs: str,
-        blocking: bool = True,
-        flags: INFlags = 0,
-)
-```
+`FileWatcher(callback: Callable[[inotify_lite.Event], Any], *files: str, blocking: bool = True, watch_flags: inotify_lite.INFlags = INFlags.NO_FLAGS)`
+:   Base class for TreeWatcher and FileWatcher. Wraps inotify(7).
+    
+    Caller must provide a callback, which will be executed for each
+    observed event.
+    
+    Attributes:
+        inotify_fd:
+            file descriptor returned by call to inotify_init1 (int).
+        callback:
+            a callable taking one argument (Event), to be called for each event.
+        watch_flags:
+            flags to be passed to inotify_add_watch.
+        watch_fds:
+            a dict mapping watch descriptors to their associated filenames.
+        files:
+            a set of filenames currently being watched.
 
-Watch directories. Extends `Inotify` and passes `INFlags.ONLYDIR` by default (raises if any of `dirs` is not a directory).
+    ### Ancestors (in MRO)
 
------
+    * inotify_lite.Inotify
 
-#### FileWatcher
+`INFlags(value, names=None, *, module=None, qualname=None, type=None, start=1)`
+:   See inotify_add_watch(2), <sys/inotify.h>, <bits/inotify.h>.
 
-```python
-FileWatcher(
-        callback: Callable[[Sequence[Event]], Any],
-        *files: str,
-        blocking: bool = True,
-        flags: INFlags = 0,
-)
-```
+    ### Ancestors (in MRO)
 
-Watch files.
+    * enum.IntFlag
+    * builtins.int
+    * enum.Flag
+    * enum.Enum
 
------
+    ### Class variables
 
-### Examples
+    `ACCESS`
+    :
 
-To watch a directory:
+    `ALL_EVENTS`
+    :
 
-```python
-def my_callback(events):
-    # Just show me the event mask.
-    for e in events:
-    	print(INFlags(e.mask))
+    `ATTRIB`
+    :
 
-# Watch the home directory for successful writes.
-watcher = TreeWatcher(my_callback, "~", flags=INFlags.CLOSE_WRITE)
-watcher.watch()
-```
+    `CLOEXEC`
+    :
+
+    `CLOSE`
+    :
+
+    `CLOSE_NOWRITE`
+    :
+
+    `CLOSE_WRITE`
+    :
+
+    `CREATE`
+    :
+
+    `DELETE`
+    :
+
+    `DELETE_SELF`
+    :
+
+    `DONT_FOLLOW`
+    :
+
+    `EXCL_UNLINK`
+    :
+
+    `IGNORED`
+    :
+
+    `ISDIR`
+    :
+
+    `MASK_ADD`
+    :
+
+    `MASK_CREATE`
+    :
+
+    `MODIFY`
+    :
+
+    `MOVE`
+    :
+
+    `MOVED_FROM`
+    :
+
+    `MOVED_TO`
+    :
+
+    `NONBLOCK`
+    :
+
+    `NO_FLAGS`
+    :
+
+    `ONESHOT`
+    :
+
+    `ONLYDIR`
+    :
+
+    `OPEN`
+    :
+
+    `Q_OVERFLOW`
+    :
+
+    `UNMOUNT`
+    :
+
+`Inotify(callback: Callable[[inotify_lite.Event], Any], *files: str, blocking: bool = True, watch_flags: inotify_lite.INFlags = INFlags.NO_FLAGS)`
+:   Base class for TreeWatcher and FileWatcher. Wraps inotify(7).
+    
+    Caller must provide a callback, which will be executed for each
+    observed event.
+    
+    Attributes:
+        inotify_fd:
+            file descriptor returned by call to inotify_init1 (int).
+        callback:
+            a callable taking one argument (Event), to be called for each event.
+        watch_flags:
+            flags to be passed to inotify_add_watch.
+        watch_fds:
+            a dict mapping watch descriptors to their associated filenames.
+        files:
+            a set of filenames currently being watched.
+
+    ### Descendants
+
+    * inotify_lite.FileWatcher
+    * inotify_lite.TreeWatcher
+
+    ### Class variables
+
+    `LEN_OFFSET`
+    :
+
+    `MAX_READ`
+    :
+
+    ### Static methods
+
+    `get_event_struct_format(name_len: int) ‑> str`
+    :
+
+    `str_from_bytes(byte_obj: bytes) ‑> str`
+    :   Convert null terminated bytes to Python string.
+
+    ### Methods
+
+    `watch(self)`
+    :
+
+`TreeWatcher(callback: Callable[[inotify_lite.Event], Any], *dirs: str, watch_subdirs: bool = True, blocking: bool = True, watch_flags: inotify_lite.INFlags = INFlags.ALL_EVENTS)`
+:   Watch directories, and optionally all subdirectories.
+    
+    Attributes:
+        watch_subdirs:
+            a boolean, whether to include subdirectories.
+        moved_to:
+            a dict mapping cookies from IN_MOVED_TO events to their associated filenames.
+        moved_from:
+            a dict mapping event.cookie from IN_MOVED_FROM events to their associated filenames.
+
+    ### Ancestors (in MRO)
+
+    * inotify_lite.Inotify
+
+    ### Methods
+
+    `get_event_abs_path(self, event: inotify_lite.Event) ‑> str`
+    :

@@ -1,6 +1,12 @@
-""" Joshua Munn, 2020 (public@elysee-munn.family). With observations of
-Kovid Goyal's 2013 calibre implementation (kovid at kovidgoyal.net).
-Requires Python >= 3.8
+"""inotify_lite: a wrapper around Linux's inotify functionality.
+
+Exposes functionality for watching files or directories, and performing
+actions on reported events. See also: Kovid Goyal's 2013 calibre implementation.
+
+    Typical usage:
+
+    watcher = TreeWatcher(lamdba x: print(x), ".")
+    watcher.watch()
 """
 import os
 import enum
@@ -46,7 +52,7 @@ def inotify_setup():
 
 
 class INFlags(enum.IntFlag):
-    """ See inotify_add_watch(2), <sys/inotify.h>, <bits/inotify.h>.
+    """See inotify_add_watch(2), <sys/inotify.h>, <bits/inotify.h>.
     """
 
     NO_FLAGS = 0x0
@@ -106,9 +112,25 @@ Event = namedtuple("Event", ("wd", "mask", "cookie", "len", "name"))
 
 
 class Inotify:
-    EVENT_FORMAT = "iIIIs"
+    """Base class for TreeWatcher and FileWatcher. Wraps inotify(7).
+
+    Caller must provide a callback, which will be executed for each
+    observed event.
+
+    Attributes:
+        inotify_fd:
+            file descriptor returned by call to inotify_init1 (int).
+        callback:
+            a callable taking one argument (Event), to be called for each event.
+        watch_flags:
+            flags to be passed to inotify_add_watch.
+        watch_fds:
+            a dict mapping watch descriptors to their associated filenames.
+        files:
+            a set of filenames currently being watched.
+    """
+
     LEN_OFFSET = sizeof(c_int) + sizeof(c_uint32) * 2
-    EVENT_SIZE = sizeof(c_int) + (sizeof(c_uint32) * 2) + sizeof(c_char_p)
     MAX_READ = 4096
 
     def __init__(
@@ -126,8 +148,6 @@ class Inotify:
         self.callback = callback
         self.watch_flags = watch_flags
         self.watch_fds: Dict[int, str] = {}
-        self.move_to: Dict[int, str] = {}
-        self.move_from: Dict[int, str] = {}
         self.files: Set[str] = set()
         for fname in files:
             self._add_watch(os.path.abspath(fname))
@@ -198,6 +218,17 @@ class Inotify:
 
 
 class TreeWatcher(Inotify):
+    """Watch directories, and optionally all subdirectories.
+
+        Attributes:
+            watch_subdirs:
+                a boolean, whether to include subdirectories.
+            moved_to:
+                a dict mapping cookies from IN_MOVED_TO events to their associated filenames.
+            moved_from:
+                a dict mapping event.cookie from IN_MOVED_FROM events to their associated filenames.
+    """
+
     def __init__(
         self,
         callback: Callable[[Event], Any],
@@ -207,7 +238,8 @@ class TreeWatcher(Inotify):
         watch_flags: INFlags = INFlags.ALL_EVENTS,
     ):
         self.watch_subdirs = watch_subdirs
-        self.mv_events: Dict[int, Event] = {}
+        self.moved_to: Dict[int, str] = {}
+        self.moved_from: Dict[int, str] = {}
         dir_paths = [os.path.abspath(os.path.expanduser(x)) for x in dirs]
         all_dirs = self._walk_subdirs(dir_paths) if watch_subdirs else dir_paths
         super().__init__(
@@ -237,7 +269,7 @@ class TreeWatcher(Inotify):
         there are a few special cases to watch out for; new subdirectories,
         deleted subdirectories, and moved subdirectories.
         """
-        if event.mask & INFlags.ISDIR:
+        if self.watch_subdirs and (event.mask & INFlags.ISDIR):
             if event.mask & INFlags.CREATE:
                 new_dir_name = self.get_event_abs_path(event)
                 self._add_watch(new_dir_name)
