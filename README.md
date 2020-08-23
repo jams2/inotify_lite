@@ -1,50 +1,14 @@
 Module inotify_lite
 ===================
-inotify_lite: a wrapper around Linux's inotify functionality.
 
-Exposes functionality for watching files or directories, and performing
-actions on reported events. See also: Kovid Goyal's 2013 calibre implementation.
-
-    Typical usage:
-
-    watcher = TreeWatcher(lamdba x: print(x), ".")
-    watcher.watch()
-
-Functions
----------
-
-    
-`inotify_setup()`
-:   
+Sub-modules
+-----------
+* inotify_lite.inotify_lite
 
 Classes
 -------
 
-`Event(wd, mask, cookie, len, name)`
-:   Event(wd, mask, cookie, len, name)
-
-    ### Ancestors (in MRO)
-
-    * builtins.tuple
-
-    ### Instance variables
-
-    `cookie`
-    :   Alias for field number 2
-
-    `len`
-    :   Alias for field number 3
-
-    `mask`
-    :   Alias for field number 1
-
-    `name`
-    :   Alias for field number 4
-
-    `wd`
-    :   Alias for field number 0
-
-`FileWatcher(callback: Callable[[inotify_lite.Event], Any], *files: str, blocking: bool = True, watch_flags: inotify_lite.INFlags = INFlags.NO_FLAGS)`
+`FileWatcher(callback: Callable[[inotify_lite.inotify_lite.InotifyEvent], Any], *files: str, blocking: bool = True, watch_flags: inotify_lite.inotify_lite.INFlags = INFlags.NO_FLAGS)`
 :   Base class for TreeWatcher and FileWatcher. Wraps inotify(7).
     
     Caller must provide a callback, which will be executed for each
@@ -54,20 +18,25 @@ Classes
         inotify_fd:
             file descriptor returned by call to inotify_init1 (int).
         callback:
-            a callable taking one argument (Event), to be called for each event.
+            a callable taking one argument (InotifyEvent), to be called for each event.
         watch_flags:
             flags to be passed to inotify_add_watch.
         watch_fds:
             a dict mapping watch descriptors to their associated filenames.
         files:
             a set of filenames currently being watched.
+        LEN_OFFSET:
+            we need to read the length of the name before unpacking the bytes
+            to the struct format. See the underlying struct_event.
+        MAX_READ:
+            int, maximum bytes to read into buffer.
 
     ### Ancestors (in MRO)
 
-    * inotify_lite.Inotify
+    * inotify_lite.inotify_lite.Inotify
 
 `INFlags(value, names=None, *, module=None, qualname=None, type=None, start=1)`
-:   See inotify_add_watch(2), <sys/inotify.h>, <bits/inotify.h>.
+:   See inotify_add_watch(2), sys/inotify.h, bits/inotify.h.
 
     ### Ancestors (in MRO)
 
@@ -159,7 +128,7 @@ Classes
     `UNMOUNT`
     :
 
-`Inotify(callback: Callable[[inotify_lite.Event], Any], *files: str, blocking: bool = True, watch_flags: inotify_lite.INFlags = INFlags.NO_FLAGS)`
+`Inotify(callback: Callable[[inotify_lite.inotify_lite.InotifyEvent], Any], *files: str, blocking: bool = True, watch_flags: inotify_lite.inotify_lite.INFlags = INFlags.NO_FLAGS)`
 :   Base class for TreeWatcher and FileWatcher. Wraps inotify(7).
     
     Caller must provide a callback, which will be executed for each
@@ -169,18 +138,23 @@ Classes
         inotify_fd:
             file descriptor returned by call to inotify_init1 (int).
         callback:
-            a callable taking one argument (Event), to be called for each event.
+            a callable taking one argument (InotifyEvent), to be called for each event.
         watch_flags:
             flags to be passed to inotify_add_watch.
         watch_fds:
             a dict mapping watch descriptors to their associated filenames.
         files:
             a set of filenames currently being watched.
+        LEN_OFFSET:
+            we need to read the length of the name before unpacking the bytes
+            to the struct format. See the underlying struct_event.
+        MAX_READ:
+            int, maximum bytes to read into buffer.
 
     ### Descendants
 
-    * inotify_lite.FileWatcher
-    * inotify_lite.TreeWatcher
+    * inotify_lite.inotify_lite.FileWatcher
+    * inotify_lite.inotify_lite.TreeWatcher
 
     ### Class variables
 
@@ -195,15 +169,37 @@ Classes
     `get_event_struct_format(name_len: int) ‑> str`
     :
 
-    `str_from_bytes(byte_obj: bytes) ‑> str`
-    :   Convert null terminated bytes to Python string.
-
     ### Methods
 
     `watch(self)`
     :
 
-`TreeWatcher(callback: Callable[[inotify_lite.Event], Any], *dirs: str, watch_subdirs: bool = True, blocking: bool = True, watch_flags: inotify_lite.INFlags = INFlags.ALL_EVENTS)`
+`InotifyEvent(wd: int, mask: int, cookie: int, name_len: int, name: bytes)`
+:   Equivalent to struct_event from inotify.h.
+    
+    Attributes:
+        wd: watch descriptor (int).
+    
+        mask: int event mask (check against INFlags).
+    
+        cookie: int associating IN_MOVED_FROM events with corresponding IN_MOVED_TO.
+    
+        name_len: int, length of name string (len in underlying struct).
+    
+        name: string, name of watched file that event refers to.
+
+    ### Static methods
+
+    `str_from_bytes(byte_obj: bytes) ‑> str`
+    :   Convert null terminated bytes to Python string.
+        
+        Args:
+            byte_obj: bytes representing a null-terminated string.
+        
+        Returns:
+            a Python string.
+
+`TreeWatcher(callback: Callable[[inotify_lite.inotify_lite.InotifyEvent], Any], *dirs: str, watch_subdirs: bool = True, blocking: bool = True, watch_flags: inotify_lite.inotify_lite.INFlags = INFlags.ALL_EVENTS)`
 :   Watch directories, and optionally all subdirectories.
     
     Attributes:
@@ -216,9 +212,9 @@ Classes
 
     ### Ancestors (in MRO)
 
-    * inotify_lite.Inotify
+    * inotify_lite.inotify_lite.Inotify
 
     ### Methods
 
-    `get_event_abs_path(self, event: inotify_lite.Event) ‑> str`
+    `get_event_abs_path(self, event: inotify_lite.inotify_lite.InotifyEvent) ‑> str`
     :
