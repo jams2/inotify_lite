@@ -190,13 +190,12 @@ class Inotify:
         n_buffers (int): number of per instance read buffers.
         read_buffers (list): per instance read buffers.
         max_read (int): maximum bytes we can read.
+        buf_size (int): in bytes.
         LEN_OFFSET (int): we need to read the length of the name before unpacking the
             bytes to the struct format. See the underlying struct inotify_event.
-        BUF_SIZE (int): in bytes.
     """
 
     LEN_OFFSET = sizeof(c_int) + sizeof(c_uint32) * 2
-    BUF_SIZE = 4096
     EventHandler = Callable[["Inotify", "InotifyEvent"], None]
 
     def __init__(
@@ -205,14 +204,16 @@ class Inotify:
         blocking: bool = True,
         watch_flags: INFlags = INFlags.NO_FLAGS,
         n_buffers: int = 1,
+        buf_size: int = 1024,
     ):
         init_flags = INFlags.NO_FLAGS if blocking else INFlags.NONBLOCK
         self.inotify_fd = inotify_init1(init_flags)
         if self.inotify_fd < 0:
             raise OSError(os.strerror(get_errno()))
         self.n_buffers = n_buffers
-        self.read_buffers = [bytearray(self.BUF_SIZE) for _ in range(n_buffers)]
-        self.max_read = n_buffers * self.BUF_SIZE
+        self.read_buffers = [bytearray(buf_size) for _ in range(n_buffers)]
+        self.max_read = n_buffers * buf_size
+        self.buf_size = buf_size
         self.exclusive_handlers: Dict[INFlags, Set[Inotify.EventHandler]] = {}
         self.inclusive_handlers: Dict[INFlags, Set[Inotify.EventHandler]] = {}
         self.watch_flags = watch_flags
@@ -321,6 +322,8 @@ class Inotify:
         """Read from the inotify fd into buffers, unpack bytes to
         InotifyEvent instances, and call the event handler.
 
+        Returns: number of bytes read.
+
         Raises:
             BufferError: bytes_read was equal to the total combined
                 buffer size.
@@ -329,10 +332,11 @@ class Inotify:
             bytes_read := os.readv(self.inotify_fd, self.read_buffers)
         ) == self.max_read:
             raise BufferError("Inotify.read exceeded allocated buffers")
-        if bytes_read < self.BUF_SIZE:
+
+        if bytes_read < self.buf_size:
             buf = self.read_buffers[0]
         else:
-            buf = reduce(add, self.read_buffers[: ceil(bytes_read / self.BUF_SIZE)])
+            buf = reduce(add, self.read_buffers[: ceil(bytes_read / self.buf_size)])
         offset = 0
         while offset < bytes_read:
             name_len = c_uint32.from_buffer(buf, offset + self.LEN_OFFSET)

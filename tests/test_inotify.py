@@ -46,3 +46,15 @@ class TestInotify(unittest.TestCase):
         watcher.read()
         self.assertEqual(1, handler.counter)
         watcher.teardown()
+
+    @with_tempfile
+    def test_inclusive_event_handled(self):
+        handler = CallCountWrapper(stub_func)
+        watcher = Inotify(self.tmpfile.name, watch_flags=INFlags.OPEN)
+        watcher.register_handler(INFlags.ALL_EVENTS, handler, exclusive=False)
+
+        fd = os.open(self.tmpfile.name, os.O_RDONLY)
+        os.close(fd)
+        watcher.read()
+        self.assertEqual(1, handler.counter)
+        watcher.teardown()
