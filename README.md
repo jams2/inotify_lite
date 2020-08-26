@@ -1,13 +1,13 @@
 [![Documentation Status](https://readthedocs.org/projects/inotify-lite/badge/?version=latest)](https://inotify-lite.readthedocs.io/en/latest/?badge=latest)
 
 
-#inotify_lite
+# inotify_lite
 
 
 `inotify_lite` is an interface to the `inotify(7)` C calls, for watching filesystem events. It provides the `Inotify` base class, and a `TreeWatcher` class for watching directories.
 
 
-##Usage Examples
+## Usage Examples
 
 ```python
 def my_callback(inotify_instance, event):
