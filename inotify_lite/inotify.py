@@ -18,24 +18,22 @@ from ctypes import (
     c_int,
     c_char_p,
     c_uint32,
-    c_ssize_t,
-    c_void_p,
-    c_size_t,
     sizeof,
     get_errno,
-    create_string_buffer,
 )
-from typing import Callable, Dict, Set, List, Tuple
+from math import ceil
+from functools import reduce
+from operator import add
 from struct import unpack, calcsize
+from typing import Callable, Dict, Set, List, Tuple
 
 
 def _inotify_setup() -> Tuple:
-    """Define prototypes and return ctypes function pointers. We use the clib
-    `read` function as it reads into a buffer and returns the number of bytes read.
+    """Define prototypes and return ctypes function pointers.
 
     Returns:
-        A tuple of ctypes._FuncPointer instances; `inotify_init1`, `inotify_add_watch`,
-        `inotify_rm_watch` and `read`.
+        A tuple of ctypes._FuncPointer instances; `inotify_init1`, `inotify_add_watch`
+        and `inotify_rm_watch`.
     """
     libc = CDLL("libc.so.6")
 
@@ -49,13 +47,10 @@ def _inotify_setup() -> Tuple:
 
     prototype = CFUNCTYPE(c_int, c_int, c_int, use_errno=True)
     rm_watch = prototype(("inotify_rm_watch", libc), ((1, "fd"), (1, "wd")))
-
-    prototype = CFUNCTYPE(c_ssize_t, c_int, c_void_p, c_size_t, use_errno=True)
-    c_read = prototype(("read", libc), ((1, "fd"), (1, "buf"), (1, "count")))
-    return init1, add_watch, rm_watch, c_read
+    return init1, add_watch, rm_watch
 
 
-(inotify_init1, inotify_add_watch, inotify_rm_watch, read) = _inotify_setup()
+(inotify_init1, inotify_add_watch, inotify_rm_watch) = _inotify_setup()
 
 
 class INFlags(enum.IntFlag):
@@ -192,13 +187,16 @@ class Inotify:
         watch_flags (INFlags): flags to be passed to `inotify_add_watch`.
         watch_fds (dict): a dict mapping watch descriptors to their associated filenames.
         files (set): a set of filenames currently being watched.
+        n_buffers (int): number of per instance read buffers.
+        read_buffers (list): per instance read buffers.
+        max_read (int): maximum bytes we can read.
         LEN_OFFSET (int): we need to read the length of the name before unpacking the
             bytes to the struct format. See the underlying struct inotify_event.
-        MAX_READ (int): maximum bytes to read into buffer.
+        BUF_SIZE (int): in bytes.
     """
 
     LEN_OFFSET = sizeof(c_int) + sizeof(c_uint32) * 2
-    MAX_READ = 4096
+    BUF_SIZE = 4096
     EventHandler = Callable[["Inotify", "InotifyEvent"], None]
 
     def __init__(
@@ -206,11 +204,15 @@ class Inotify:
         *files: str,
         blocking: bool = True,
         watch_flags: INFlags = INFlags.NO_FLAGS,
+        n_buffers: int = 1,
     ):
         init_flags = INFlags.NO_FLAGS if blocking else INFlags.NONBLOCK
         self.inotify_fd = inotify_init1(init_flags)
         if self.inotify_fd < 0:
             raise OSError(os.strerror(get_errno()))
+        self.n_buffers = n_buffers
+        self.read_buffers = [bytearray(self.BUF_SIZE) for _ in range(n_buffers)]
+        self.max_read = n_buffers * self.BUF_SIZE
         self.exclusive_handlers: Dict[INFlags, Set[Inotify.EventHandler]] = {}
         self.inclusive_handlers: Dict[INFlags, Set[Inotify.EventHandler]] = {}
         self.watch_flags = watch_flags
@@ -219,7 +221,7 @@ class Inotify:
         for fname in files:
             self._add_watch(os.path.abspath(fname))
 
-    def _teardown(self) -> None:
+    def teardown(self) -> None:
         for fd in self.watch_fds:
             self._rm_watch(fd)
         os.close(self.inotify_fd)
@@ -235,10 +237,11 @@ class Inotify:
             exclusive (bool): whether to register it as an exclusive handler (otherwise,
                 it will be inclusive).
         """
-        if exclusive:
-            self.exclusive_handlers.get(event_mask, set()).add(handler)
+        container = self.exclusive_handlers if exclusive else self.inclusive_handlers
+        if event_mask in container:
+            container[event_mask].add(handler)
         else:
-            self.inclusive_handlers.get(event_mask, set()).add(handler)
+            container[event_mask] = {handler}
 
     def _add_watch(self, fname: str, add_flags: INFlags = INFlags.MASK_CREATE) -> None:
         """Add an inotify watch for given file and update instance helper fields.
@@ -314,20 +317,32 @@ class Inotify:
         """
         return f"iIII{name_len}s"
 
-    def _watch(self):
-        buf = create_string_buffer(self.MAX_READ)
-        while (bytes_read := read(self.inotify_fd, buf, self.MAX_READ)) > 0:
-            offset = 0
-            while offset < bytes_read:
-                name_len = c_uint32.from_buffer(buf, offset + self.LEN_OFFSET)
-                fmt = self.get_event_struct_format(name_len.value)
-                obj_size = calcsize(fmt)
-                self._handle_event(
-                    InotifyEvent.from_struct(
-                        unpack(fmt, buf[offset : offset + obj_size])
-                    )
-                )
-                offset += obj_size
+    def read(self) -> int:
+        """Read from the inotify fd into buffers, unpack bytes to
+        InotifyEvent instances, and call the event handler.
+
+        Raises:
+            BufferError: bytes_read was equal to the total combined
+                buffer size.
+        """
+        if (
+            bytes_read := os.readv(self.inotify_fd, self.read_buffers)
+        ) == self.max_read:
+            raise BufferError("Inotify.read exceeded allocated buffers")
+        if bytes_read < self.BUF_SIZE:
+            buf = self.read_buffers[0]
+        else:
+            buf = reduce(add, self.read_buffers[: ceil(bytes_read / self.BUF_SIZE)])
+        offset = 0
+        while offset < bytes_read:
+            name_len = c_uint32.from_buffer(buf, offset + self.LEN_OFFSET)
+            fmt = self.get_event_struct_format(name_len.value)
+            obj_size = calcsize(fmt)
+            self._handle_event(
+                InotifyEvent.from_struct(unpack(fmt, buf[offset : offset + obj_size]))
+            )
+            offset += obj_size
+        return bytes_read
 
     def watch(self):
         """Public interface to _watch.
@@ -335,13 +350,14 @@ class Inotify:
         Start the read -> callback loop, teardown gracefully.
         """
         try:
-            self._watch()
+            while self.read() > 0:
+                continue
         except KeyboardInterrupt:
             pass
         except OSError:
             pass
         finally:
-            self._teardown()
+            self.teardown()
 
 
 class TreeWatcher(Inotify):
