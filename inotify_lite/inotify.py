@@ -25,17 +25,17 @@ from ctypes import (
     get_errno,
     create_string_buffer,
 )
-from typing import Callable, Any, Dict, Set, List, Tuple
+from typing import Callable, Dict, Set, List, Tuple
 from struct import unpack, calcsize
 
 
-def inotify_setup() -> Tuple:
+def _inotify_setup() -> Tuple:
     """Define prototypes and return ctypes function pointers. We use the clib
-    read function as it reads into a buffer and returns the number of bytes read.
+    `read` function as it reads into a buffer and returns the number of bytes read.
 
     Returns:
-        A tuple of ctypes._FuncPointer instances; inotify_init1, inotify_add_watch,
-        inotify_rm_watch and read.
+        A tuple of ctypes._FuncPointer instances; `inotify_init1`, `inotify_add_watch`,
+        `inotify_rm_watch` and `read`.
     """
     libc = CDLL("libc.so.6")
 
@@ -55,11 +55,11 @@ def inotify_setup() -> Tuple:
     return init1, add_watch, rm_watch, c_read
 
 
-(inotify_init1, inotify_add_watch, inotify_rm_watch, read) = inotify_setup()
+(inotify_init1, inotify_add_watch, inotify_rm_watch, read) = _inotify_setup()
 
 
 class INFlags(enum.IntFlag):
-    """ Flags defined in <sys/inotify.h>, <bits/inotify.h>.
+    """Flags defined in <sys/inotify.h>, <bits/inotify.h>.
     """
 
     NO_FLAGS = 0x0
@@ -116,15 +116,16 @@ class INFlags(enum.IntFlag):
 
 
 class InotifyEvent:
-    """Maps to struct_event from inotify.h. The from_struct classmethod is provided
+    """Maps to struct `inotify_event` from `inotify.h`. The `from_struct` classmethod is provided
     for convenience.
 
     Attributes:
         wd (int): watch descriptor.
-        mask (int): event mask (check against INFlags).
-        cookie (int): unique id associating IN_MOVED_FROM events with corresponding IN_MOVED_TO.
-        name_len (int): length of name string (len in underlying struct).
-        name (string): name of watched file that event refers to.
+        mask (int): event mask (check against `INFlags`).
+        cookie (int): unique id associating `IN_MOVED_FROM` events with corresponding `IN_MOVED_TO`.
+        name_len (int): length of name string (`len` in underlying struct).
+        name (string): name of watched file that event refers to. The constructor
+            expects a byte-like object, but casts it to a string.
     """
 
     def __init__(self, wd: int, mask: int, cookie: int, name_len: int, name: bytes):
@@ -135,32 +136,36 @@ class InotifyEvent:
         self.name = self.str_from_bytes(name)
 
     @classmethod
-    def from_struct(cls, struct_tuple: Tuple) -> InotifyEvent:
-        """ Returns a new InotifyEvent instance from (tuple) result
+    def from_struct(cls, struct_members: Tuple) -> InotifyEvent:
+        """Returns a new InotifyEvent instance from (tuple) result
         of calling struct.unpack on bytes, with struct_event format.
 
         Arguments:
-            struct_tuple (tuple): tuple returned from struct.unpack.
+            struct_members (tuple): tuple returned from struct.unpack.
                 Expects members wd (int), mask (int), cookie (int), name_len (int),
                 name (bytes).
 
         Returns:
-            A new InotifyEvent instance.
+            A new `InotifyEvent` instance.
+
+        Raises:
+            ValueError: received a tuple of incorrect length.
+            TypeError: one of the struct_members members was of incorrect type.
         """
-        if len(struct_tuple) != 5:
-            raise ValueError("")
+        if len(struct_members) != 5:
+            raise ValueError("Tuple should match (wd, mask, cookie, name_len, name)")
         for i, t in enumerate(InotifyEvent._get_struct_types()):
-            if not isinstance(struct_tuple[i], t):
-                raise TypeError()
-        return cls(*struct_tuple)
+            if not isinstance(struct_members[i], t):
+                raise TypeError(f"Expected {t}, got {type(struct_members[i])}")
+        return cls(*struct_members)
 
     @staticmethod
-    def _get_struct_types():
+    def _get_struct_types() -> tuple:
         return (int, int, int, int, bytes)
 
     @staticmethod
     def str_from_bytes(byte_obj: bytes) -> str:
-        """ Convert null terminated bytes to Python string.
+        """Convert null terminated bytes to Python string.
 
         Args:
             byte_obj (bytes): bytes representing a null-terminated string.
@@ -172,53 +177,78 @@ class InotifyEvent:
 
 
 class Inotify:
-    """Base class for TreeWatcher. Interfaces with inotify(7).
+    """Base class for `TreeWatcher`. Interfaces with inotify(7).
 
-    Caller must provide a callback, which will be executed for each
-    observed event.
+    While `TreeWatcher` provides functionality for watching directories
+    recursively, this is suitable for watching a file (or files).
 
     Attributes:
-        inotify_fd (int): file descriptor returned by call to inotify_init1 (int).
-        callback (callable): a callable taking one argument (InotifyEvent),
-            to be called for each event.
-        watch_flags (INFlags): flags to be passed to inotify_add_watch.
+        exclusive_handlers (dict): maps `INFlags` to sets of `Inotify.EventHandler`s.
+            Handler is executed iff event.mask == handler mask.
+        inclusive_handlers (dict): maps `INFlags` to sets of `Inotify.EventHandler`s.
+            Handler will be executed if a bitwise AND of the event.mask with the handler
+            mask is non-zero.
+        inotify_fd (int): file descriptor returned by call to `inotify_init1`.
+        watch_flags (INFlags): flags to be passed to `inotify_add_watch`.
         watch_fds (dict): a dict mapping watch descriptors to their associated filenames.
         files (set): a set of filenames currently being watched.
-        LEN_OFFSET:
-            we need to read the length of the name before unpacking the bytes
-            to the struct format. See the underlying struct_event.
-        MAX_READ:
-            int, maximum bytes to read into buffer.
+        LEN_OFFSET (int): we need to read the length of the name before unpacking the
+            bytes to the struct format. See the underlying struct inotify_event.
+        MAX_READ (int): maximum bytes to read into buffer.
     """
 
     LEN_OFFSET = sizeof(c_int) + sizeof(c_uint32) * 2
     MAX_READ = 4096
+    EventHandler = Callable[["Inotify", "InotifyEvent"], None]
 
     def __init__(
         self,
-        callback: Callable[[InotifyEvent], Any],
         *files: str,
         blocking: bool = True,
         watch_flags: INFlags = INFlags.NO_FLAGS,
     ):
-        self.inotify_fd = inotify_init1(
-            INFlags.NO_FLAGS if blocking else INFlags.NONBLOCK
-        )
+        init_flags = INFlags.NO_FLAGS if blocking else INFlags.NONBLOCK
+        self.inotify_fd = inotify_init1(init_flags)
         if self.inotify_fd < 0:
             raise OSError(os.strerror(get_errno()))
-        self.callback = callback
+        self.exclusive_handlers: Dict[INFlags, Set[Inotify.EventHandler]] = {}
+        self.inclusive_handlers: Dict[INFlags, Set[Inotify.EventHandler]] = {}
         self.watch_flags = watch_flags
         self.watch_fds: Dict[int, str] = {}
         self.files: Set[str] = set()
         for fname in files:
             self._add_watch(os.path.abspath(fname))
 
-    def _add_watch(self, fname: str, add_flags: INFlags = INFlags.MASK_CREATE) -> None:
-        """Add an inotify watch for given file and update instance helper records.
+    def _teardown(self) -> None:
+        for fd in self.watch_fds:
+            self._rm_watch(fd)
+        os.close(self.inotify_fd)
+
+    def register_handler(
+        self, event_mask: INFlags, handler: Inotify.EventHandler, exclusive=True
+    ):
+        """Register an exclusive handler for matching events.
 
         Args:
-            fname: string, file to watch.
-            add_flags: INFlags to pass to inotify_add_watch.
+            event_mask (INFlags): event mask to match.
+            handler (Inotify.EventHandler): handler to call on matching event.
+            exclusive (bool): whether to register it as an exclusive handler (otherwise,
+                it will be inclusive).
+        """
+        if exclusive:
+            self.exclusive_handlers.get(event_mask, set()).add(handler)
+        else:
+            self.inclusive_handlers.get(event_mask, set()).add(handler)
+
+    def _add_watch(self, fname: str, add_flags: INFlags = INFlags.MASK_CREATE) -> None:
+        """Add an inotify watch for given file and update instance helper fields.
+
+        Args:
+            fname (string): file to watch.
+            add_flags (INFlags): flags to pass to `inotify_add_watch`.
+
+        Raises:
+            OSError: `inotify_add_watch` returned -1 and set errno.
         """
         if not os.path.exists(fname):
             raise FileNotFoundError(fname)
@@ -241,11 +271,48 @@ class Inotify:
             )
             print(os.strerror(get_errno()), file=sys.stderr)
 
+    def get_event_abs_path(self, event: InotifyEvent) -> str:
+        return f"{self.watch_fds[event.wd]}/{event.name}"
+
     def _handle_event(self, event: InotifyEvent) -> None:
-        self.callback(event)
+        """Called for every event read from the inotify fd.
+
+        To match events to exclusive handlers:
+        - lookup event.mask in self.exclusive_handlers; and
+        - execute every handler in the associated set.
+
+        To match events to inclusive handlers:
+        - iterate over the keys of self.inclusive_handlers;
+        - bitwise AND each key with the event.handler; and
+        - execute every handler in the associated set, iff the result of
+        the AND is non-zero.
+
+        Args:
+            event (InotifyEvent): event read from the inotify fd.
+        """
+        if self.exclusive_handlers:
+            for x_handler in self.exclusive_handlers.get(INFlags(event.mask), []):
+                x_handler(self, event)
+
+        if self.inclusive_handlers:
+            for _, handlers in filter(
+                lambda x: x[0] & event.mask, self.inclusive_handlers.items()
+            ):
+                for i_handler in handlers:
+                    i_handler(self, event)
 
     @staticmethod
     def get_event_struct_format(name_len: int) -> str:
+        """Given an event with name of length (name_len), return
+        the correct format string to pass to struct.unpack.
+
+        Args:
+            name_len (int): length of event name, taken from
+            struct inotify_event.len.
+
+        Returns:
+            the struct format string.
+        """
         return f"iIII{name_len}s"
 
     def _watch(self):
@@ -263,18 +330,16 @@ class Inotify:
                 )
                 offset += obj_size
 
-    def _teardown(self):
-        for fd in self.watch_fds:
-            self._rm_watch(fd)
-        os.close(self.inotify_fd)
-        self.inotify_fd = -1
-        self.files = set()
-        self.watch_fds = {}
-
     def watch(self):
+        """Public interface to _watch.
+
+        Start the read -> callback loop, teardown gracefully.
+        """
         try:
             self._watch()
         except KeyboardInterrupt:
+            pass
+        except OSError:
             pass
         finally:
             self._teardown()
@@ -282,36 +347,31 @@ class Inotify:
 
 class TreeWatcher(Inotify):
     """Watch directories, and optionally all subdirectories.
-
-    Attributes:
-        watch_subdirs (bool): watch subdirectories?
-        moved_to (dict): maps event.cookie from IN_MOVED_TO events to their
-            associated filenames.
-        moved_from (dict): maps event.cookie from IN_MOVED_FROM events to their
-            associated filenames.
     """
 
     def __init__(
         self,
-        callback: Callable[[InotifyEvent], Any],
         *dirs: str,
         watch_subdirs: bool = True,
         blocking: bool = True,
         watch_flags: INFlags = INFlags.ALL_EVENTS,
     ):
-        self.watch_subdirs = watch_subdirs
-        self.moved_to: Dict[int, str] = {}
-        self.moved_from: Dict[int, str] = {}
         dir_paths = [os.path.abspath(os.path.expanduser(x)) for x in dirs]
         all_dirs = self._walk_subdirs(dir_paths) if watch_subdirs else dir_paths
         super().__init__(
-            callback,
-            *all_dirs,
-            blocking=blocking,
-            watch_flags=watch_flags | INFlags.ONLYDIR,
+            *all_dirs, blocking=blocking, watch_flags=watch_flags | INFlags.ONLYDIR,
         )
 
     def _walk_subdirs(self, dirs: List[str]) -> List[str]:
+        """Recursively walk all directories in dirs, adding the path of
+        each subdirectory.
+
+        Args:
+            dirs (list): directories to walk.
+
+        Returns:
+            list of paths (strings, not os.path instances) of subdirectories found.
+        """
         if not dirs:
             return []
         subdirs = []
@@ -322,33 +382,3 @@ class TreeWatcher(Inotify):
                 if os.path.isdir(x)
             ]
         return dirs + self._walk_subdirs(subdirs)
-
-    def get_event_abs_path(self, event: InotifyEvent) -> str:
-        return f"{self.watch_fds[event.wd]}/{event.name}"
-
-    def _handle_event(self, event: InotifyEvent) -> None:
-        """ As we may be watching for changes in all subdirectories,
-        there are a few special cases to watch out for; new subdirectories,
-        deleted subdirectories, and moved subdirectories.
-        """
-        if self.watch_subdirs and (event.mask & INFlags.ISDIR):
-            if event.mask & INFlags.CREATE:
-                new_dir_name = self.get_event_abs_path(event)
-                self._add_watch(new_dir_name)
-                print("Added watch: {0}".format(new_dir_name))
-            elif event.mask & INFlags.DELETE:
-                self._rm_watch(event.wd)
-                self.files.remove(self.get_event_abs_path(event))
-                del self.watch_fds[event.wd]
-                print("Removed watch: {0}".format(event.name))
-            elif event.mask & INFlags.MOVE:
-                print("Subdirectory moved: ", end="")
-                print(self.watch_fds[event.wd] + "/" + event.name)
-        if event.mask & INFlags.DELETE_SELF:
-            # A watched directory was deleted.
-            # Delete the watch and all its watched subdirectories
-            pass
-        if event.mask & INFlags.MOVE_SELF:
-            # A watched directory was moved.
-            pass
-        self.callback(event)
