@@ -227,7 +227,7 @@ class Inotify:
     def register_handler(
         self, event_mask: INFlags, handler: Inotify.EventHandler, exclusive=True
     ):
-        """Register an exclusive handler for matching events.
+        """Register a handler for matching events.
 
         Args:
             event_mask (INFlags): event mask to match.
@@ -290,16 +290,15 @@ class Inotify:
         Args:
             event (InotifyEvent): event read from the inotify fd.
         """
-        if self.exclusive_handlers:
-            for x_handler in self.exclusive_handlers.get(INFlags(event.mask), []):
-                x_handler(self, event)
+        for handler in self.exclusive_handlers.get(INFlags(event.mask), []):
+            handler(self, event)
 
         if self.inclusive_handlers:
             for _, handlers in filter(
                 lambda x: x[0] & event.mask, self.inclusive_handlers.items()
             ):
-                for i_handler in handlers:
-                    i_handler(self, event)
+                for handler in handlers:
+                    handler(self, event)
 
     @staticmethod
     def get_event_struct_format(name_len: int) -> str:
