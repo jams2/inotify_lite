@@ -116,16 +116,15 @@ class InotifyEvent:
 
     Attributes:
         wd (int): watch descriptor.
-        mask (int): event mask (check against `INFlags`).
+        mask (INFlags): event mask
         cookie (int): unique id associating `IN_MOVED_FROM` events with corresponding `IN_MOVED_TO`.
         name_len (int): length of name string (`len` in underlying struct).
-        name (string): name of watched file that event refers to. The constructor
-            expects a byte-like object, but casts it to a string.
+        name (string): name of watched file that event refers to.
     """
 
     def __init__(self, wd: int, mask: int, cookie: int, name_len: int, name: bytes):
         self.wd = wd
-        self.mask = mask
+        self.mask = INFlags(mask)
         self.cookie = cookie
         self.name_len = name_len
         self.name = self.str_from_bytes(name)
