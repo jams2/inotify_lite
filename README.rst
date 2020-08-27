@@ -5,7 +5,7 @@
 inotify_lite
 =============
 
-``inotify_lite`` provides a Python 3 wrapper around the Linux ``inotify`` API. This lets you monitor filesystem events. See ``inotify(7)``.
+``inotify_lite`` provides a Python 3 wrapper around the Linux ``inotify`` API. This lets you monitor filesystem events, and execute callbacks. See ``inotify(7)``.
 
 * homepage_
 * documentation_
@@ -46,7 +46,7 @@ Example:
 	print(event.mask)
 
       flags = INFlags.CREATE | INFlags.DELETE
-      fs_watcher = TreeWatcher("/home/", watch_flags=flags)
+      fs_watcher = Inotify("/home/", watch_flags=flags)
       fs_watcher.register_handler(INFlags.ALL_FLAGS, my_callback, exclusive=False)
       fs_watcher.watch()
 
