@@ -1,11 +1,11 @@
 import setuptools
 
-with open("README.md", "r") as fh:
+with open("README.rst", "r") as fh:
     long_description = fh.read()
 
     setuptools.setup(
         name="inotify_lite",
-        version="0.0.3",
+        version="0.0.4",
         author="Joshua Munn",
         author_email="public@elysee-munn.family",
         description="Linux inotify wrapper",
