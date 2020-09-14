@@ -45,10 +45,11 @@ Example:
         print(event.name)
         print(event.mask)
 
-        flags = INFlags.CREATE | INFlags.DELETE
-        fs_watcher = Inotify("/home/", watch_flags=flags)
-        fs_watcher.register_handler(INFlags.ALL_FLAGS, my_callback, exclusive=False)
-        fs_watcher.watch()
+    flags = INFlags.CREATE | INFlags.DELETE
+    fs_watcher = Inotify("/home/", watch_flags=flags)
+    fs_watcher.register_handler(INFlags.ALL_FLAGS, my_callback, exclusive=False)
+    fs_watcher.watch()
+
 
 The ``TreeWatcher`` class is provided to recursively watch directories.
 
