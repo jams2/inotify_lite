@@ -339,10 +339,8 @@ class Inotify:
             name_len = c_uint32.from_buffer(buf, offset + self.LEN_OFFSET)
             fmt = self.get_event_struct_format(name_len.value)
             obj_size = calcsize(fmt)
-            segment = buf[offset : offset + obj_size]   # NOQA: E203
-            self._handle_event(
-                InotifyEvent.from_struct(unpack(fmt, segment))
-            )
+            segment = buf[offset : offset + obj_size]  # NOQA: E203
+            self._handle_event(InotifyEvent.from_struct(unpack(fmt, segment)))
             offset += obj_size
         return bytes_read
 
