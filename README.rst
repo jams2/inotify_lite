@@ -1,6 +1,6 @@
 .. image:: https://readthedocs.org/projects/inotify-lite/badge/?version=latest
-	   :target: https://inotify-lite.readthedocs.io/en/latest/?badge=latest
-		    :alt: Documentation Status
+  :target: https://inotify-lite.readthedocs.io/en/latest/?badge=latest
+  :alt: Documentation Status
 
 inotify_lite
 =============
@@ -15,7 +15,7 @@ Requires
 --------
 
 * Linux >= 2.6.13 (or glibc >= 2.5)
-* Python >= 3.8
+* Python >= 3.6
 
 Installation
 ------------
@@ -29,26 +29,26 @@ Usage
 
 To use ``inotify_lite``:
 
-* create an ``Inotify`` instance, passing the name of the files (or directories) you wish to watch;
-* register a handler (or many), a callable of two arguments:
+- Create an ``Inotify`` instance, passing the name of the files (or directories) you wish to watch;
+- Register a handler (or many), a callable of two arguments:
 
-  * an ``Inotify`` instance; and
-  * an ``InotifyEvent`` instance.
+  + an ``Inotify`` instance; and
+  + an ``InotifyEvent`` instance.
 
-* call ``Inotify.read`` to read once, or ``Inotify.watch`` to watch until a keyboard interrupt is received.
+- call ``Inotify.read`` to read once, or ``Inotify.watch`` to watch until a keyboard interrupt is received.
 
 Example:
 
 .. code-block:: python
 
-      def my_callback(_, event):
-	print(event.name)
-	print(event.mask)
+    def my_callback(_, event):
+        print(event.name)
+        print(event.mask)
 
-      flags = INFlags.CREATE | INFlags.DELETE
-      fs_watcher = Inotify("/home/", watch_flags=flags)
-      fs_watcher.register_handler(INFlags.ALL_FLAGS, my_callback, exclusive=False)
-      fs_watcher.watch()
+        flags = INFlags.CREATE | INFlags.DELETE
+        fs_watcher = Inotify("/home/", watch_flags=flags)
+        fs_watcher.register_handler(INFlags.ALL_FLAGS, my_callback, exclusive=False)
+        fs_watcher.watch()
 
 The ``TreeWatcher`` class is provided to recursively watch directories.
 
@@ -73,6 +73,7 @@ License
 
 The project is licensed under GPLv3.
 
+.. _inotify_lite: https://github.com/jams2/inotify_lite
 .. _homepage: https://github.com/jams2/inotify_lite
 .. _documentation: https://inotify-lite.readthedocs.io
 .. _`issue tracker`: https://github.com/jams2/inotify_lite/issues
