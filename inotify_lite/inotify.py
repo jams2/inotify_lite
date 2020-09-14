@@ -8,7 +8,6 @@ actions on reported events.
     watcher = TreeWatcher(lamdba x: print(x), ".")
     watcher.watch()
 """
-from __future__ import annotations
 import os
 import enum
 import sys
@@ -42,7 +41,8 @@ def _inotify_setup() -> Tuple:
 
     prototype = CFUNCTYPE(c_int, c_int, c_char_p, c_uint32, use_errno=True)
     add_watch = prototype(
-        ("inotify_add_watch", libc), ((1, "fd"), (1, "pathname"), (1, "mask")),
+        ("inotify_add_watch", libc),
+        ((1, "fd"), (1, "pathname"), (1, "mask")),
     )
 
     prototype = CFUNCTYPE(c_int, c_int, c_int, use_errno=True)
@@ -54,8 +54,7 @@ def _inotify_setup() -> Tuple:
 
 
 class INFlags(enum.IntFlag):
-    """Flags defined in <sys/inotify.h>, <bits/inotify.h>.
-    """
+    """Flags defined in <sys/inotify.h>, <bits/inotify.h>."""
 
     NO_FLAGS = 0x0
     CLOEXEC = 0x00080000
@@ -130,7 +129,7 @@ class InotifyEvent:
         self.name = self.str_from_bytes(name)
 
     @classmethod
-    def from_struct(cls, struct_members: Tuple) -> InotifyEvent:
+    def from_struct(cls, struct_members: Tuple) -> 'InotifyEvent':
         """Returns a new InotifyEvent instance from (tuple) result
         of calling struct.unpack on bytes, with struct_event format.
 
@@ -227,7 +226,7 @@ class Inotify:
         os.close(self.inotify_fd)
 
     def register_handler(
-        self, event_mask: INFlags, handler: Inotify.EventHandler, exclusive=True
+        self, event_mask: INFlags, handler: 'Inotify.EventHandler', exclusive=True
     ):
         """Register a handler for matching events.
 
@@ -327,9 +326,8 @@ class Inotify:
             BufferError: bytes_read was equal to the total combined
                 buffer size.
         """
-        if (
-            bytes_read := os.readv(self.inotify_fd, self.read_buffers)
-        ) == self.max_read:
+        bytes_read = os.readv(self.inotify_fd, self.read_buffers)
+        if bytes_read == self.max_read:
             raise BufferError("Inotify.read exceeded allocated buffers")
 
         if bytes_read < self.buf_size:
@@ -341,8 +339,9 @@ class Inotify:
             name_len = c_uint32.from_buffer(buf, offset + self.LEN_OFFSET)
             fmt = self.get_event_struct_format(name_len.value)
             obj_size = calcsize(fmt)
+            segment = buf[offset : offset + obj_size]   # NOQA: E203
             self._handle_event(
-                InotifyEvent.from_struct(unpack(fmt, buf[offset : offset + obj_size]))
+                InotifyEvent.from_struct(unpack(fmt, segment))
             )
             offset += obj_size
         return bytes_read
@@ -364,8 +363,7 @@ class Inotify:
 
 
 class TreeWatcher(Inotify):
-    """Watch directories, and optionally all subdirectories.
-    """
+    """Watch directories, and optionally all subdirectories."""
 
     def __init__(
         self,
@@ -377,7 +375,9 @@ class TreeWatcher(Inotify):
         dir_paths = [os.path.abspath(os.path.expanduser(x)) for x in dirs]
         all_dirs = self._walk_subdirs(dir_paths) if watch_subdirs else dir_paths
         super().__init__(
-            *all_dirs, blocking=blocking, watch_flags=watch_flags | INFlags.ONLYDIR,
+            *all_dirs,
+            blocking=blocking,
+            watch_flags=watch_flags | INFlags.ONLYDIR,
         )
 
     def _walk_subdirs(self, dirs: List[str]) -> List[str]:

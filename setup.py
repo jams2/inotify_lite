@@ -10,7 +10,7 @@ with open("README.rst", "r") as fh:
         author_email="public@elysee-munn.family",
         description="Linux inotify wrapper",
         long_description=long_description,
-        long_description_content_type="text/markdown",
+        long_description_content_type="text/restructured",
         url="https://github.com/jams2/inotify_lite",
         packages=setuptools.find_packages(),
         classifiers=[
@@ -19,5 +19,8 @@ with open("README.rst", "r") as fh:
             "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
             "Operating System :: POSIX :: Linux",
         ],
-        python_requires=">=3.8",
+        python_requires=">=3.6",
+        extras_require={
+            'dev': ['pytest-mypy', 'pytest-flake8']
+        }
     )
