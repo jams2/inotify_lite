@@ -21,6 +21,8 @@ with open("README.rst", "r") as fh:
         ],
         python_requires=">=3.6",
         extras_require={
-            'dev': ['pytest-mypy', 'pytest-flake8']
-        }
+            "dev": ["pytest", "pytest-mypy", "pytest-flake8"],
+            "dist": ["setuptools", "wheel", "twine"],
+            "docs": ["sphinx"],
+        },
     )
