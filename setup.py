@@ -5,12 +5,12 @@ with open("README.rst", "r") as fh:
 
     setuptools.setup(
         name="inotify_lite",
-        version="0.0.4",
+        version="0.0.5",
         author="Joshua Munn",
         author_email="public@elysee-munn.family",
         description="Linux inotify wrapper",
         long_description=long_description,
-        long_description_content_type="text/restructured",
+        long_description_content_type="text/x-rst",
         url="https://github.com/jams2/inotify_lite",
         packages=setuptools.find_packages(),
         classifiers=[
