@@ -41,8 +41,7 @@ def _inotify_setup() -> Tuple:
 
     prototype = CFUNCTYPE(c_int, c_int, c_char_p, c_uint32, use_errno=True)
     add_watch = prototype(
-        ("inotify_add_watch", libc),
-        ((1, "fd"), (1, "pathname"), (1, "mask")),
+        ("inotify_add_watch", libc), ((1, "fd"), (1, "pathname"), (1, "mask")),
     )
 
     prototype = CFUNCTYPE(c_int, c_int, c_int, use_errno=True)
@@ -110,13 +109,14 @@ class INFlags(enum.IntFlag):
 
 
 class InotifyEvent:
-    """Maps to struct `inotify_event` from `inotify.h`. The `from_struct` classmethod is provided
-    for convenience.
+    """Maps to struct `inotify_event` from `inotify.h`. The `from_struct` classmethod
+    is provided for convenience.
 
     Attributes:
         wd (int): watch descriptor.
         mask (INFlags): event mask
-        cookie (int): unique id associating `IN_MOVED_FROM` events with corresponding `IN_MOVED_TO`.
+        cookie (int): unique id associating `IN_MOVED_FROM` events with corresponding
+            `IN_MOVED_TO`.
         name_len (int): length of name string (`len` in underlying struct).
         name (string): name of watched file that event refers to.
     """
@@ -129,7 +129,7 @@ class InotifyEvent:
         self.name = self.str_from_bytes(name)
 
     @classmethod
-    def from_struct(cls, struct_members: Tuple) -> 'InotifyEvent':
+    def from_struct(cls, struct_members: Tuple) -> "InotifyEvent":
         """Returns a new InotifyEvent instance from (tuple) result
         of calling struct.unpack on bytes, with struct_event format.
 
@@ -226,7 +226,7 @@ class Inotify:
         os.close(self.inotify_fd)
 
     def register_handler(
-        self, event_mask: INFlags, handler: 'Inotify.EventHandler', exclusive=True
+        self, event_mask: INFlags, handler: "Inotify.EventHandler", exclusive=True
     ):
         """Register a handler for matching events.
 
@@ -373,9 +373,7 @@ class TreeWatcher(Inotify):
         dir_paths = [os.path.abspath(os.path.expanduser(x)) for x in dirs]
         all_dirs = self._walk_subdirs(dir_paths) if watch_subdirs else dir_paths
         super().__init__(
-            *all_dirs,
-            blocking=blocking,
-            watch_flags=watch_flags | INFlags.ONLYDIR,
+            *all_dirs, blocking=blocking, watch_flags=watch_flags | INFlags.ONLYDIR,
         )
 
     def _walk_subdirs(self, dirs: List[str]) -> List[str]:
