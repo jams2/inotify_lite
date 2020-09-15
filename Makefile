@@ -1,5 +1,5 @@
 test:
-	pytest
+	pytest tests --rootdir=tests --verbosity=1
 
 dist:
 	. venv/bin/activate
