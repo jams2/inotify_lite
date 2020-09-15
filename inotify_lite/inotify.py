@@ -10,6 +10,7 @@ actions on reported events.
 """
 import os
 import enum
+import selectors
 import sys
 from ctypes import (
     CDLL,
@@ -24,7 +25,7 @@ from math import ceil
 from functools import reduce
 from operator import add
 from struct import unpack, calcsize
-from typing import Callable, Dict, Set, List, Tuple
+from typing import Callable, Dict, Set, List, Tuple, Union
 
 
 def _inotify_setup() -> Tuple:
@@ -203,6 +204,7 @@ class Inotify:
         watch_flags: INFlags = INFlags.NO_FLAGS,
         n_buffers: int = 1,
         buf_size: int = 1024,
+        timeout: Union[int, None] = None,
     ):
         init_flags = INFlags.NO_FLAGS if blocking else INFlags.NONBLOCK
         self.inotify_fd = inotify_init1(init_flags)
@@ -212,17 +214,30 @@ class Inotify:
         self.read_buffers = [bytearray(buf_size) for _ in range(n_buffers)]
         self.max_read = n_buffers * buf_size
         self.buf_size = buf_size
+        self.timeout: Union[int, None] = timeout
         self.exclusive_handlers: Dict[INFlags, Set[Inotify.EventHandler]] = {}
         self.inclusive_handlers: Dict[INFlags, Set[Inotify.EventHandler]] = {}
-        self.watch_flags = watch_flags
+        self.watch_flags: INFlags = watch_flags
         self.watch_fds: Dict[int, str] = {}
         self.files: Set[str] = set()
+        self.selector: selectors.DefaultSelector = self._setup_selector()
         for fname in files:
             self._add_watch(os.path.abspath(fname))
+
+    def _setup_selector(self):
+        """Setup the selector. This gives us some timeout functionality.
+
+        Returns:
+            selectors.DefaultSelector instance, with self.inotify_fd registered
+        """
+        selector = selectors.DefaultSelector()
+        selector.register(self.inotify_fd, selectors.EVENT_READ)
+        return selector
 
     def teardown(self) -> None:
         for fd in self.watch_fds:
             self._rm_watch(fd)
+        self.selector.close()
         os.close(self.inotify_fd)
 
     def register_handler(
@@ -339,19 +354,17 @@ class Inotify:
             name_len = c_uint32.from_buffer(buf, offset + self.LEN_OFFSET)
             fmt = self.get_event_struct_format(name_len.value)
             obj_size = calcsize(fmt)
-            segment = buf[offset : offset + obj_size]  # NOQA: E203
+            segment = buf[offset : offset + obj_size]
             self._handle_event(InotifyEvent.from_struct(unpack(fmt, segment)))
             offset += obj_size
         return bytes_read
 
     def watch(self):
-        """Public interface to _watch.
-
-        Start the read -> callback loop, teardown gracefully.
+        """Start the read -> callback loop, teardown gracefully.
         """
         try:
-            while self.read() > 0:
-                continue
+            while self.selector.select(self.timeout):
+                self.read()
         except KeyboardInterrupt:
             pass
         except OSError:
@@ -369,11 +382,15 @@ class TreeWatcher(Inotify):
         watch_subdirs: bool = True,
         blocking: bool = True,
         watch_flags: INFlags = INFlags.ALL_EVENTS,
+        timeout: Union[int, None] = None,
     ):
         dir_paths = [os.path.abspath(os.path.expanduser(x)) for x in dirs]
         all_dirs = self._walk_subdirs(dir_paths) if watch_subdirs else dir_paths
         super().__init__(
-            *all_dirs, blocking=blocking, watch_flags=watch_flags | INFlags.ONLYDIR,
+            *all_dirs,
+            blocking=blocking,
+            watch_flags=watch_flags | INFlags.ONLYDIR,
+            timeout=timeout,
         )
 
     def _walk_subdirs(self, dirs: List[str]) -> List[str]:
