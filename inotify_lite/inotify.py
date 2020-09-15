@@ -185,7 +185,7 @@ class Inotify:
         inotify_fd (int): file descriptor returned by call to `inotify_init1`.
         watch_flags (INFlags): flags to be passed to `inotify_add_watch`.
         watch_fds (dict): a dict mapping watch descriptors to their associated filenames.
-        timeout (int): time (in seconds) to wait before reading, or None.
+        timeout: time (in seconds) to wait before reading, or None.
         files (set): a set of filenames currently being watched.
         n_buffers (int): number of per instance read buffers.
         read_buffers (list): per instance read buffers.
@@ -204,7 +204,7 @@ class Inotify:
         watch_flags: INFlags = INFlags.NO_FLAGS,
         n_buffers: int = 1,
         buf_size: int = 1024,
-        timeout: Union[int, None] = None,
+        timeout: Union[float, int, None] = None,
     ):
         self.inotify_fd = inotify_init1(INFlags.NO_FLAGS)
         if self.inotify_fd < 0:
@@ -213,7 +213,7 @@ class Inotify:
         self.read_buffers = [bytearray(buf_size) for _ in range(n_buffers)]
         self.max_read = n_buffers * buf_size
         self.buf_size = buf_size
-        self.timeout: Union[int, None] = timeout
+        self.timeout: Union[float, int, None] = timeout
         self.exclusive_handlers: Dict[INFlags, Set[Inotify.EventHandler]] = {}
         self.inclusive_handlers: Dict[INFlags, Set[Inotify.EventHandler]] = {}
         self.watch_flags: INFlags = watch_flags
@@ -406,7 +406,7 @@ class TreeWatcher(Inotify):
         *dirs: str,
         watch_subdirs: bool = True,
         watch_flags: INFlags = INFlags.ALL_EVENTS,
-        timeout: Union[int, None] = None,
+        timeout: Union[float, int, None] = None,
     ):
         dir_paths = [os.path.abspath(os.path.expanduser(x)) for x in dirs]
         all_dirs = self._walk_subdirs(dir_paths) if watch_subdirs else dir_paths
