@@ -71,6 +71,10 @@ Contribute
 
 Contributions are welcome. Open an issue_ for visibility.
 
+To install the dev requirements run ``python setup.py -e .[dev]``.
+
+To run the tests run ``make test``.
+
 Code should be formatted with black.
 
 * Issue Tracker: https://github.com/jams2/inotify_lite/issues
