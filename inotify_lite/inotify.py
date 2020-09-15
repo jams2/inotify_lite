@@ -201,14 +201,12 @@ class Inotify:
     def __init__(
         self,
         *files: str,
-        blocking: bool = True,
         watch_flags: INFlags = INFlags.NO_FLAGS,
         n_buffers: int = 1,
         buf_size: int = 1024,
         timeout: Union[int, None] = None,
     ):
-        init_flags = INFlags.NO_FLAGS if blocking else INFlags.NONBLOCK
-        self.inotify_fd = inotify_init1(init_flags)
+        self.inotify_fd = inotify_init1(INFlags.NO_FLAGS)
         if self.inotify_fd < 0:
             raise OSError(os.strerror(get_errno()))
         self.n_buffers = n_buffers
@@ -399,17 +397,13 @@ class TreeWatcher(Inotify):
         self,
         *dirs: str,
         watch_subdirs: bool = True,
-        blocking: bool = True,
         watch_flags: INFlags = INFlags.ALL_EVENTS,
         timeout: Union[int, None] = None,
     ):
         dir_paths = [os.path.abspath(os.path.expanduser(x)) for x in dirs]
         all_dirs = self._walk_subdirs(dir_paths) if watch_subdirs else dir_paths
         super().__init__(
-            *all_dirs,
-            blocking=blocking,
-            watch_flags=watch_flags | INFlags.ONLYDIR,
-            timeout=timeout,
+            *all_dirs, watch_flags=watch_flags | INFlags.ONLYDIR, timeout=timeout,
         )
 
     def _walk_subdirs(self, dirs: List[str]) -> List[str]:
