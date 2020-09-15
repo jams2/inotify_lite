@@ -11,7 +11,8 @@ def with_tempfile(func: Callable) -> Callable:
     def wrapper(instance, *args, **kwargs):
         with NamedTemporaryFile() as fd:
             instance.tmpfile = fd
-            return func(instance, *args, **kwargs)
+            result = func(instance, *args, **kwargs)
+        return result
 
     return wrapper
 
@@ -19,8 +20,9 @@ def with_tempfile(func: Callable) -> Callable:
 def with_tempdir(func: Callable) -> Callable:
     @wraps(func)
     def wrapper(instance, *args, **kwargs):
-        instance.tmpdir = TemporaryDirectory()
-        result = func(instance, *args, **kwargs)
+        with TemporaryDirectory() as dirname:
+            instance.tmpdir_name = dirname
+            result = func(instance, *args, **kwargs)
         return result
 
     return wrapper
@@ -44,7 +46,7 @@ class TestInotify(unittest.TestCase):
     @classmethod
     def setupClass(cls):
         cls.tmpfile = None
-        cls.tmpdir = None
+        cls.tmpdir_name = None
 
     @with_tempfile
     def test_exclusive_event_handled(self):
@@ -73,9 +75,9 @@ class TestInotify(unittest.TestCase):
     @with_tempdir
     def test_inclusive_directory_event(self):
         handler = CallCountWrapper(stub_func)
-        watcher = TreeWatcher(self.tmpdir.name, watch_subdirs=False)
+        watcher = TreeWatcher(self.tmpdir_name, watch_subdirs=False)
         watcher.register_handler(INFlags.ISDIR | INFlags.OPEN, handler, exclusive=True)
-        fd = os.open(self.tmpdir.name, os.O_RDONLY)
+        fd = os.open(self.tmpdir_name, os.O_RDONLY)
         os.close(fd)
         watcher.read_once()
         self.assertEqual(1, handler.counter)
