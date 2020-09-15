@@ -1,4 +1,5 @@
 import os
+import unittest
 from functools import wraps
 from typing import Callable
 from tempfile import NamedTemporaryFile
@@ -29,9 +30,9 @@ class CallCountWrapper:
         self.func(*args, **kwargs)
 
 
-class TestInotify:
+class TestInotify(unittest.TestCase):
     @classmethod
-    def setup_class(cls):
+    def setupClass(cls):
         cls.tmpfile = None
 
     @with_tempfile
@@ -42,8 +43,8 @@ class TestInotify:
 
         fd = os.open(self.tmpfile.name, os.O_RDONLY)
         os.close(fd)
-        watcher.read()
-        assert handler.counter == 1
+        watcher.read_once()
+        self.assertEqual(1, handler.counter)
         watcher.teardown()
 
     @with_tempfile
@@ -54,6 +55,12 @@ class TestInotify:
 
         fd = os.open(self.tmpfile.name, os.O_RDONLY)
         os.close(fd)
-        watcher.read()
-        assert handler.counter == 1
+        watcher.read_once()
+        self.assertEqual(1, handler.counter)
         watcher.teardown()
+
+    @with_tempfile
+    def test_timeout(self):
+        watcher = Inotify(self.tmpfile.name, watch_flags=INFlags.OPEN, timeout=0.1)
+        bytes_read = watcher.read_once()
+        self.assertEqual(0, bytes_read)
