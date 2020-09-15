@@ -244,6 +244,15 @@ class Inotify:
     ):
         """Register a handler for matching events.
 
+        An exclusive handler will only be called if the event mask of the
+        event is an exact match for the specified event_mask.
+
+        In contrast, an inclusive handler will be called for any partial
+        match of the event mask. For example, an event returning a mask of
+        IN_ISDIR|IN_OPEN will cause an inclusive handler registered for IN_OPEN
+        to be executed. An exclusive handler registered for IN_OPEN
+        will not be executed in this case.
+
         Args:
             event_mask (INFlags): event mask to match.
             handler (Inotify.EventHandler): handler to call on matching event.
