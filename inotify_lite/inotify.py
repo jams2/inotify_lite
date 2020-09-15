@@ -265,12 +265,11 @@ class Inotify:
         else:
             container[event_mask] = {handler}
 
-    def _add_watch(self, fname: str, add_flags: INFlags = INFlags.MASK_CREATE) -> None:
+    def _add_watch(self, fname: str) -> None:
         """Add an inotify watch for given file and update instance helper fields.
 
         Args:
             fname (string): file to watch.
-            add_flags (INFlags): flags to pass to `inotify_add_watch`.
 
         Raises:
             OSError: `inotify_add_watch` returned -1 and set errno.
@@ -280,7 +279,7 @@ class Inotify:
         watch_fd = inotify_add_watch(
             c_int(self.inotify_fd),
             c_char_p(fname.encode("utf-8")),
-            c_uint32(self.watch_flags | add_flags),
+            c_uint32(self.watch_flags),
         )
         if watch_fd < 0:
             err = os.strerror(get_errno())
