@@ -2,8 +2,8 @@ import os
 import unittest
 from functools import wraps
 from typing import Callable
-from tempfile import NamedTemporaryFile
-from inotify_lite import Inotify, INFlags
+from tempfile import NamedTemporaryFile, TemporaryDirectory
+from inotify_lite import Inotify, TreeWatcher, INFlags
 
 
 def with_tempfile(func: Callable) -> Callable:
@@ -12,6 +12,16 @@ def with_tempfile(func: Callable) -> Callable:
         with NamedTemporaryFile() as fd:
             instance.tmpfile = fd
             return func(instance, *args, **kwargs)
+
+    return wrapper
+
+
+def with_tempdir(func: Callable) -> Callable:
+    @wraps(func)
+    def wrapper(instance, *args, **kwargs):
+        instance.tmpdir = TemporaryDirectory()
+        result = func(instance, *args, **kwargs)
+        return result
 
     return wrapper
 
@@ -34,6 +44,7 @@ class TestInotify(unittest.TestCase):
     @classmethod
     def setupClass(cls):
         cls.tmpfile = None
+        cls.tmpdir = None
 
     @with_tempfile
     def test_exclusive_event_handled(self):
@@ -59,8 +70,20 @@ class TestInotify(unittest.TestCase):
         self.assertEqual(1, handler.counter)
         watcher.teardown()
 
+    @with_tempdir
+    def test_inclusive_directory_event(self):
+        handler = CallCountWrapper(stub_func)
+        watcher = TreeWatcher(self.tmpdir.name, watch_subdirs=False)
+        watcher.register_handler(INFlags.ISDIR | INFlags.OPEN, handler, exclusive=True)
+        fd = os.open(self.tmpdir.name, os.O_RDONLY)
+        os.close(fd)
+        watcher.read_once()
+        self.assertEqual(1, handler.counter)
+        watcher.teardown()
+
     @with_tempfile
     def test_timeout(self):
         watcher = Inotify(self.tmpfile.name, watch_flags=INFlags.OPEN, timeout=0.1)
         bytes_read = watcher.read_once()
         self.assertEqual(0, bytes_read)
+        watcher.teardown()
