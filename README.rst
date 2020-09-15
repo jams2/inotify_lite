@@ -37,7 +37,7 @@ To use ``inotify_lite``:
 
 - call ``Inotify.read`` to read once, or ``Inotify.watch`` to watch until a keyboard interrupt is received.
 
-Example:
+Examples:
 
 .. code-block:: python
 
@@ -46,10 +46,21 @@ Example:
         print(event.mask)
 
     flags = INFlags.CREATE | INFlags.DELETE
-    fs_watcher = Inotify("/home/", watch_flags=flags)
-    fs_watcher.register_handler(INFlags.ALL_FLAGS, my_callback, exclusive=False)
-    fs_watcher.watch()
+    watcher = Inotify("/home/", watch_flags=flags)
+    watcher.register_handler(INFlags.ALL_FLAGS, my_callback, exclusive=False)
+    watcher.watch()
 
+.. code-block:: python
+
+    def my_callback(_, event):
+        print(event.name)
+        print(event.mask)
+
+    watcher = TreeWatcher("/home/", watch_flags=INFlags.OPEN, timeout=10)
+    # Watch the home directory for OPEN events with a 10 second timeout.
+
+    watcher.register_handler(INFlags.ALL_FLAGS, my_callback, exclusive=False)
+    watcher.read_once()
 
 The ``TreeWatcher`` class is provided to recursively watch directories.
 
@@ -59,6 +70,8 @@ Contribute
 ----------
 
 Contributions are welcome. Open an issue_ for visibility.
+
+Code should be formatted with black.
 
 * Issue Tracker: https://github.com/jams2/inotify_lite/issues
 * Source Code: https://github.com/jams2/inotify_lite.git
