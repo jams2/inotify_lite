@@ -185,6 +185,7 @@ class Inotify:
         inotify_fd (int): file descriptor returned by call to `inotify_init1`.
         watch_flags (INFlags): flags to be passed to `inotify_add_watch`.
         watch_fds (dict): a dict mapping watch descriptors to their associated filenames.
+        timeout (int): time (in seconds) to wait before reading, or None.
         files (set): a set of filenames currently being watched.
         n_buffers (int): number of per instance read buffers.
         read_buffers (list): per instance read buffers.
@@ -331,7 +332,7 @@ class Inotify:
         """
         return f"iIII{name_len}s"
 
-    def read(self) -> int:
+    def _read(self) -> int:
         """Read from the inotify fd into buffers, unpack bytes to
         InotifyEvent instances, and call the event handler.
 
@@ -343,7 +344,7 @@ class Inotify:
         """
         bytes_read = os.readv(self.inotify_fd, self.read_buffers)
         if bytes_read == self.max_read:
-            raise BufferError("Inotify.read exceeded allocated buffers")
+            raise BufferError("Inotify._read exceeded allocated buffers")
 
         if bytes_read < self.buf_size:
             buf = self.read_buffers[0]
@@ -359,12 +360,30 @@ class Inotify:
             offset += obj_size
         return bytes_read
 
+    def read_once(self) -> int:
+        """Wait self.timeout
+        """
+        ready_fds = self.selector.select(self.timeout)
+        if ready_fds:
+            return self._read()
+        return 0
+
     def watch(self):
         """Start the read -> callback loop, teardown gracefully.
+
+        Python documentation states that select will return an
+        empty list if the process receives a signal before end
+        of timeout or the observed fd is ready. In that case,
+        just break out of the loop.
+        https://docs.python.org/3/library/selectors.html#selectors.BaseSelector.select
         """
         try:
-            while self.selector.select(self.timeout):
-                self.read()
+            while True:
+                ready_fds: list = self.selector.select(self.timeout)
+                if ready_fds:
+                    self._read()
+                else:
+                    break
         except KeyboardInterrupt:
             pass
         except OSError:
