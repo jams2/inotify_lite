@@ -434,3 +434,13 @@ class TreeWatcher(Inotify):
                 if os.path.isdir(x)
             ]
         return dirs + self._walk_subdirs(subdirs)
+
+    def register_handler(
+        self, event_mask: INFlags, handler: "Inotify.EventHandler", exclusive=True
+    ):
+        """If ISDIR isn't included in the flags, an exclusive handler won't be
+        executed.
+        """
+        super().register_handler(
+            event_mask | INFlags.ISDIR, handler, exclusive=exclusive
+        )
